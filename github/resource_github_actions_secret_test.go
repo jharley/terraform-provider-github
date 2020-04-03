@@ -45,11 +45,47 @@ func TestAccGithubActionsSecret_basic(t *testing.T) {
 	})
 }
 
+func TestAccGithubActionsSecret_keyBlock(t *testing.T) {
+	repo := "test-repo"
+
+	secretResourceName := "github_actions_secret.test_secret"
+	secretValue := "super_secret_value"
+	t.Log(testAccGithubActionsSecretFullWithKeyConfig(repo, secretValue))
+
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck:     func() { testAccPreCheck(t) },
+		Providers:    testAccProviders,
+		CheckDestroy: testAccCheckGithubActionsSecretDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccGithubActionsSecretFullWithKeyConfig(repo, secretValue),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckGithubActionsSecretExists(secretResourceName, "test_secret_name", t),
+					resource.TestCheckResourceAttr("github_actions_secret.test_secret", "plaintext_value", secretValue),
+					resource.TestCheckResourceAttrSet("github_actions_secret.test_secret", "key.0.key_id"),
+					resource.TestCheckResourceAttrSet("github_actions_secret.test_secret", "key.0.public_key"),
+					resource.TestCheckResourceAttrSet("github_actions_secret.test_secret", "created_at"),
+					resource.TestCheckResourceAttrSet("github_actions_secret.test_secret", "updated_at"),
+				),
+			},
+		},
+	})
+}
+
 func testAccGithubActionsSecretFullConfig(repoName, plaintext string) string {
 
 	// Take resources from other tests to avoid manual creation of secrets / repos
 	githubPKData := testAccCheckGithubActionsPublicKeyDataSourceConfig(repoName)
 	githubActionsSecretResource := testAccGithubActionsSecretConfig(repoName, plaintext)
+
+	return fmt.Sprintf("%s%s", githubPKData, githubActionsSecretResource)
+}
+
+func testAccGithubActionsSecretFullWithKeyConfig(repoName, plaintext string) string {
+
+	// Take resources from other tests to avoid manual creation of secrets / repos
+	githubPKData := testAccCheckGithubActionsPublicKeyDataSourceConfig(repoName)
+	githubActionsSecretResource := testAccGithubActionsSecretPublicKeyConfig(repoName, plaintext)
 
 	return fmt.Sprintf("%s%s", githubPKData, githubActionsSecretResource)
 }
@@ -60,6 +96,21 @@ resource "github_actions_secret" "test_secret" {
   repository       = "%s"
   secret_name      = "test_secret_name"
   plaintext_value  = "%s"
+}
+`, repo, plaintext)
+}
+
+func testAccGithubActionsSecretPublicKeyConfig(repo, plaintext string) string {
+	return fmt.Sprintf(`
+resource "github_actions_secret" "test_secret" {
+  repository       = "%s"
+  secret_name      = "test_secret_name"
+  plaintext_value  = "%s"
+  key {
+		key_id     = data.github_actions_public_key.test_pk.key_id
+		public_key = data.github_actions_public_key.test_pk.key
+	  }
+
 }
 `, repo, plaintext)
 }

@@ -4,10 +4,11 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"log"
+
 	"github.com/google/go-github/v29/github"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"golang.org/x/crypto/nacl/box"
-	"log"
 )
 
 func resourceGithubActionsSecret() *schema.Resource {
@@ -31,6 +32,33 @@ func resourceGithubActionsSecret() *schema.Resource {
 				Type:      schema.TypeString,
 				Required:  true,
 				Sensitive: true,
+			},
+			"key": {
+				Type:     schema.TypeList,
+				MaxItems: 1,
+				Optional: true,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"key_id": {
+							Type:     schema.TypeString,
+							Required: true,
+						},
+						"public_key": {
+							Type:     schema.TypeString,
+							Required: true,
+						},
+					},
+				},
+			},
+			"key_id": {
+				Type:       schema.TypeString,
+				Optional:   true,
+				Deprecated: "Use key instead",
+			},
+			"public_key": {
+				Type:       schema.TypeString,
+				Optional:   true,
+				Deprecated: "Use key instead",
 			},
 			"created_at": {
 				Type:     schema.TypeString,
@@ -57,10 +85,19 @@ func resourceGithubActionsSecretCreateOrUpdate(d *schema.ResourceData, meta inte
 	repo := d.Get("repository").(string)
 	secretName := d.Get("secret_name").(string)
 	plaintextValue := d.Get("plaintext_value").(string)
+	key := d.Get("key").([]interface{})
+	var keyId, publicKey string
+	for _, k := range key {
+		kmap := k.(map[string]interface{})
+		keyId = kmap["key_id"].(string)
+		publicKey = kmap["public_key"].(string)
+	}
 
-	keyId, publicKey, err := getPublicKeyDetails(owner, repo, meta)
-	if err != nil {
-		return err
+	if keyId == "" && publicKey == "" {
+		keyId, publicKey, err = getPublicKeyDetails(owner, repo, meta)
+		if err != nil {
+			return err
+		}
 	}
 
 	encryptedText, err := encryptPlaintext(plaintextValue, publicKey)
